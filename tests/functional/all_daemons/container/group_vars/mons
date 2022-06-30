@@ -9,3 +9,5 @@ crush_rule_hdd:
   default: true
 crush_rules:
   - "{{ crush_rule_hdd }}"
+ceph_docker_image: ceph-ci/ceph
+ceph_docker_image_tag: main
