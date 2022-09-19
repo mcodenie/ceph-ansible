@@ -10,8 +10,8 @@
       osd: 'allow rwx'
       mon: 'allow rw'
     import_key: False
-    owner: "ceph"
-    group: "ceph"
+    owner: "{{ ceph_uid if containerized_deployment | bool else 'ceph' }}"
+    group: "{{ ceph_uid if containerized_deployment | bool else 'ceph' }}"
     mode: "0600"
   no_log: "{{ no_log_on_ceph_key_tasks }}"
   environment:
