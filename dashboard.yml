@@ -73,6 +73,8 @@
     - import_role:
         name: ceph-prometheus
     - import_role:
+        name: ceph-influxdb
+    - import_role:
         name: ceph-grafana
 
   post_tasks:

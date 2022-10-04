@@ -1,0 +1,30 @@
+---
+- name: create influxdb directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ influxdb_user_id }}"
+    group: "{{ influxdb_user_id }}"
+  with_items:
+   - "{{ influxdb_conf_dir }}"
+   - "{{ influxdb_data_dir }}"
+
+- name: write influxdb config file
+  openstack.config_template.config_template:
+    src: config.toml.j2
+    dest: "{{ influxdb_conf_dir }}/config.toml"
+    owner: "{{ influxdb_user_id }}"
+    group: "{{ influxdb_user_id }}"
+    mode: 0640
+    config_type: yaml
+    config_overrides: "{{ influxdb_conf_overrides }}"
+  notify: service handler
+
+
+
+- name: include setup_container.yml
+  include_tasks: setup_container.yml
+
+
+# - name: include configure_influxdb.yml
+#   include_tasks: configure_influxdb.yml

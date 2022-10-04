@@ -209,7 +209,7 @@
     HTTPS_PROXY: "{{ ceph_docker_https_proxy | default('') }}"
     NO_PROXY: "{{ ceph_docker_no_proxy }}"
 
-- name: "pulling alertmanager/prometheus/grafana container images"
+- name: "pulling alertmanager/prometheus/influxdb/grafana container images"
   command: "{{ timeout_command }} {{ container_binary }} pull {{ item }}"
   changed_when: false
   register: monitoring_images
@@ -219,6 +219,7 @@
   loop:
     - "{{ alertmanager_container_image }}"
     - "{{ prometheus_container_image }}"
+    - "{{ influxdb_container_image }}"
     - "{{ grafana_container_image }}"
   when:
     - dashboard_enabled | bool

@@ -1,0 +1,39 @@
+---
+- name: Start and enable service
+  ansible.builtin.systemd:
+    name: influxdb
+    state: started
+    enabled: true
+    daemon_reload: true
+
+
+- name: Force all notified handlers to run at this point
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for service to become available
+  ansible.builtin.uri:
+    url: http://localhost:8086/
+  register: result
+  until: result.status == 200
+  retries: 60
+  delay: 1
+
+
+- name: Initialize service
+  ansible.builtin.command: |
+    {{ container_binary }} exec --interactive influxdb \
+    influx setup \
+    --username '{{ influxdb_primary_user }}' \
+    --password '{{ influxdb_primary_user_password }}' \
+    --org '{{ influxdb_primary_organization_name }}' \
+    --bucket '{{ influxdb_primary_bucket_name }}' \
+    --retention '{{ influxdb_primary_bucket_name_retention_period }}' \
+    --force
+  args:
+    creates: "{{ influxdb_conf_dir }}/influx-configs"
+    
+- name: enable and start influxdb
+  service:
+    name: influxdb
+    state: restarted
+    enabled: true
