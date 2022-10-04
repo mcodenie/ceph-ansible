@@ -353,6 +353,11 @@
           changed_when: false
           delegate_to: '{{ groups[mon_group_name][0] }}'
 
+        - name: set influxdb container image in ceph configuration
+          command: "{{ ceph_cmd }} config set mgr mgr/cephadm/container_image_influxdb {{ influxdb_container_image }}"
+          changed_when: false
+          delegate_to: '{{ groups[mon_group_name][0] }}'
+
     - name: enable the osd memory autotune for hci environment
       command: "{{ ceph_cmd }} config set osd osd_memory_target_autotune true"
       changed_when: false

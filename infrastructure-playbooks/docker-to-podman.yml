@@ -111,7 +111,7 @@
                 inventory_hostname in groups.get(iscsi_gw_group_name, []) or
                 inventory_hostname in groups.get(nfs_group_name, [])
 
-        - name: "pulling alertmanager/grafana/prometheus images from docker daemon"
+        - name: "pulling alertmanager/grafana/prometheus/influxdb images from docker daemon"
           command: "{{ timeout_command }} {{ container_binary }} pull docker-daemon:{{ item }}"
           changed_when: false
           register: pull_image
@@ -122,6 +122,7 @@
             - "{{ alertmanager_container_image }}"
             - "{{ grafana_container_image }}"
             - "{{ prometheus_container_image }}"
+            - "{{ influxdb_container_image }}"
           when:
             - dashboard_enabled | bool
             - inventory_hostname in groups.get(monitoring_group_name, [])

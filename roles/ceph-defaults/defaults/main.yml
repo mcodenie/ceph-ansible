@@ -728,6 +728,16 @@ prometheus_conf_overrides: {}
 # Uncomment out this variable if you need to customize the retention period for prometheus storage.
 # set it to '30d' if you want to retain 30 days of data.
 #prometheus_storage_tsdb_retention_time: 15d
+influxdb_container_image: "docker.io/library/influxdb:1.8"
+influxdb_container_cpu_period: 100000
+influxdb_container_cpu_cores: 2
+# container_memory is in GB
+influxdb_container_memory: 4
+influxdb_data_dir: /var/lib/influxdb
+influxdb_conf_dir: /etc/influxdb
+influxdb_user_id: '65534'  # This is the UID used by the library/influxdb container image
+influxdb_port: 8086
+influxdb_conf_overrides: {}
 alertmanager_container_image: "docker.io/prom/alertmanager:v0.16.2"
 alertmanager_container_cpu_period: 100000
 alertmanager_container_cpu_cores: 2

@@ -1,0 +1,162 @@
+---
+# - name: install ceph-influxdb-dashboards package on RedHat or SUSE
+#   package:
+#     name: ceph-influxdb-dashboards
+#     state: "{{ (upgrade_ceph_packages|bool) | ternary('latest','present') }}"
+#   register: result
+#   until: result is succeeded
+#   when:
+#     - not containerized_deployment | bool
+#     - ansible_facts['os_family'] in ['RedHat', 'Suse']
+#   tags: package-install
+
+# - name: make sure influxdb is down
+#   service:
+#     name: influxdb
+#     state: stopped
+
+# - name: wait for influxdb to be stopped
+#   wait_for:
+#     host: '{{ influxdb_server_addr if ip_version == "ipv4" else influxdb_server_addr[1:-1] }}'
+#     port: '{{ influxdb_port }}'
+#     state: stopped
+
+# - name: make sure influxdb configuration directories exist
+#   file:
+#     path: "{{ item }}"
+#     state: directory
+#     recurse: yes
+#     owner: "{{ influxdb_uid }}"
+#     group: "{{ influxdb_uid }}"
+#   with_items:
+#     - "/etc/influxdb/dashboards/ceph-dashboard"
+#     - "/etc/influxdb/provisioning/datasources"
+#     - "/etc/influxdb/provisioning/dashboards"
+#     - "/etc/influxdb/provisioning/notifiers"
+
+# - name: download ceph influxdb dashboards
+#   get_url:
+#     url: "https://raw.githubusercontent.com/ceph/ceph/{{ influxdb_dashboard_version }}/monitoring/ceph-mixin/dashboards_out/{{ item }}"
+#     dest: "/etc/influxdb/dashboards/ceph-dashboard/{{ item }}"
+#   with_items: "{{ influxdb_dashboard_files }}"
+#   when:
+#     - not containerized_deployment | bool
+#     - not ansible_facts['os_family'] in ['RedHat', 'Suse']
+
+# - name: write influxdb.ini
+#   openstack.config_template.config_template:
+#     src: influxdb.ini.j2
+#     dest: /etc/influxdb/influxdb.ini
+#     owner: "{{ influxdb_uid }}"
+#     group: "{{ influxdb_uid }}"
+#     mode: 0640
+#     config_type: ini
+#     config_overrides: "{{ influxdb_conf_overrides }}"
+
+# - name: write datasources provisioning config file
+#   template:
+#     src: datasources-ceph-dashboard.yml.j2
+#     dest: /etc/influxdb/provisioning/datasources/ceph-dashboard.yml
+#     owner: "{{ influxdb_uid }}"
+#     group: "{{ influxdb_uid }}"
+#     mode: 0640
+
+# - name: Write dashboards provisioning config file
+#   template:
+#     src: dashboards-ceph-dashboard.yml.j2
+#     dest: /etc/influxdb/provisioning/dashboards/ceph-dashboard.yml
+#     owner: "{{ influxdb_uid }}"
+#     group: "{{ influxdb_uid }}"
+#     mode: 0640
+#   when: not containerized_deployment | bool
+
+# - name: copy influxdb SSL certificate file
+#   copy:
+#     src: "{{ influxdb_crt }}"
+#     dest: "/etc/influxdb/ceph-dashboard.crt"
+#     owner: "{{ influxdb_uid }}"
+#     group: "{{ influxdb_uid }}"
+#     mode: 0640
+#     remote_src: "{{ dashboard_tls_external | bool }}"
+#   when:
+#     - influxdb_crt | length > 0
+#     - dashboard_protocol == "https"
+
+# - name: copy influxdb SSL certificate key
+#   copy:
+#     src: "{{ influxdb_key }}"
+#     dest: "/etc/influxdb/ceph-dashboard.key"
+#     owner: "{{ influxdb_uid }}"
+#     group: "{{ influxdb_uid }}"
+#     mode: 0440
+#     remote_src: "{{ dashboard_tls_external | bool }}"
+#   when:
+#     - influxdb_key | length > 0
+#     - dashboard_protocol == "https"
+
+# - name: generate a Self Signed OpenSSL certificate for dashboard
+#   shell: |
+#     test -f /etc/influxdb/ceph-dashboard.key -a -f /etc/influxdb/ceph-dashboard.crt || \
+#     (openssl req -new -nodes -x509 -subj '/O=IT/CN=ceph-influxdb' -days 3650 -keyout /etc/influxdb/ceph-dashboard.key -out /etc/influxdb/ceph-dashboard.crt -extensions v3_ca && \
+#     chown {{ influxdb_uid }}:{{ influxdb_uid }} /etc/influxdb/ceph-dashboard.key /etc/influxdb/ceph-dashboard.crt)
+#   when:
+#     - dashboard_protocol == "https"
+#     - influxdb_key | length == 0 or influxdb_crt | length == 0
+
+# - name: initialise influxdb 
+#   shell: |    
+#     podman run -d -p 8086:8086 -v {{ influxdb_data_dir }}:/var/lib/influxdb -v {{ influxdb_conf_dir }}:/etc/influxdb \
+#       -e DOCKER_INFLUXDB_INIT_MODE=setup  -e DOCKER_INFLUXDB_INIT_USERNAME=admin  -e DOCKER_INFLUXDB_INIT_PASSWORD='M@ssey123' \
+#       -e DOCKER_INFLUXDB_INIT_ORG='Massey University' -e DOCKER_INFLUXDB_INIT_BUCKET=Ceph  -e DOCKER_INFLUXDB_INIT_RETENTION=1w \
+#       -e DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=my-super-secret-auth-token  --name=influxdb   influxdb:2.4.0
+#   #run_once: true
+
+- name: Start and enable service
+  ansible.builtin.systemd:
+    name: influxdb
+    state: started
+    enabled: true
+    daemon_reload: true
+
+
+- name: Force all notified handlers to run at this point
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for service to become available
+  ansible.builtin.uri:
+    url: http://localhost:8086/
+  register: result
+  until: result.status == 200
+  retries: 60
+  delay: 1
+
+
+- name: Initialize service
+  ansible.builtin.command: |
+    {{ container_binary }} exec --interactive influxdb \
+    influx setup \
+    --username '{{ influxdb_primary_user }}' \
+    --password '{{ influxdb_primary_user_password }}' \
+    --org '{{ influxdb_primary_organization_name }}' \
+    --bucket '{{ influxdb_primary_bucket_name }}' \
+    --retention '{{ influxdb_primary_bucket_name_retention_period }}' \
+    --force
+  args:
+    creates: "{{ influxdb_conf_dir }}/influx-configs"
+
+#  args:
+#    creates: "{{ influxdb_etc_path }}/influx-configs"
+
+- name: enable and start influxdb
+  service:
+    name: influxdb
+    state: restarted
+    enabled: true
+
+# - name: wait for influxdb to start
+#   wait_for:
+#     host: '{{ influxdb_server_addr if ip_version == "ipv4" else influxdb_server_addr[1:-1] }}'
+#     port: '{{ influxdb_port }}'
+
+# podman exec --interactive influxdb influx  setup --username   admin  --password M@ssey123 
+#--org ‘Massey University’  --bucket  Ceph   --retention   1w   --force

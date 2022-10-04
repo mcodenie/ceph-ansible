@@ -23,6 +23,14 @@
         permanent: true
         immediate: true
         state: enabled
+
+    - name: open mgr/influxdb port
+      firewalld:
+        port: "8086/tcp"
+        zone: "{{ ceph_dashboard_firewall_zone }}"
+        permanent: true
+        immediate: true
+        state: enabled      
   when:
     - mgr_group_name is defined
     - (groups.get(mgr_group_name,[]) | length > 0 and mgr_group_name in group_names) or
@@ -40,6 +48,14 @@
     - name: open prometheus port
       firewalld:
         port: "{{ prometheus_port }}/tcp"
+        zone: "{{ ceph_dashboard_firewall_zone }}"
+        permanent: true
+        immediate: true
+        state: enabled
+
+    - name: open influxdb port
+      firewalld:
+        port: "{{ influxdb_port }}/tcp"
         zone: "{{ ceph_dashboard_firewall_zone }}"
         permanent: true
         immediate: true
