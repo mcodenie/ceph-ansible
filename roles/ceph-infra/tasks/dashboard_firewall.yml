@@ -30,7 +30,7 @@
         zone: "{{ ceph_dashboard_firewall_zone }}"
         permanent: true
         immediate: true
-        state: enabled      
+        state: enabled
   when:
     - mgr_group_name is defined
     - (groups.get(mgr_group_name,[]) | length > 0 and mgr_group_name in group_names) or
