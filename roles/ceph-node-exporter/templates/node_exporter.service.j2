@@ -31,7 +31,7 @@ ExecStart=/usr/bin/{{ container_binary }} run --rm --name=node-exporter \
   --path.sysfs=/rootfs/sys \
   --path.rootfs=/rootfs \
   --no-collector.timex \
-  --web.listen-address=:{{ node_exporter_port }}
+  --web.listen-address={{ ansible_facts['hostname'] }}:{{ node_exporter_port }}
 {% if container_binary == 'podman' %}
 ExecStop=-/usr/bin/sh -c "/usr/bin/{{ container_binary }} rm -f `cat /%t/%n-cid`"
 {% else %}
