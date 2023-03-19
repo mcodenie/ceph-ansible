@@ -30,14 +30,12 @@ numactl \
   -d --log-driver journald --conmon-pidfile /%t/%n-pid --cidfile /%t/%n-cid \
 {% endif %}
   --pids-limit={{ 0 if container_binary == 'podman' else -1 }} \
+  --security-opt label=disable \
   --rm \
   --net=host \
   --privileged=true \
   --pid=host \
   --ipc=host \
-  {% if osd_objectstore == 'filestore' -%}
-  --memory={{ ceph_osd_docker_memory_limit }} \
-  {% endif -%}
   --cpus={{ cpu_limit }} \
   {% if ceph_osd_docker_cpuset_cpus is defined -%}
   --cpuset-cpus='{{ ceph_osd_docker_cpuset_cpus }}' \
@@ -47,7 +45,8 @@ numactl \
   {% endif -%}
   -v /dev:/dev \
   -v /etc/localtime:/etc/localtime:ro \
-  -v /var/lib/ceph:/var/lib/ceph:z \
+  -v /var/lib/ceph/osd:/var/lib/ceph/osd:z \
+  -v /var/lib/ceph/bootstrap-osd:/var/lib/ceph/bootstrap-osd:z \
   -v /etc/ceph:/etc/ceph:z \
   -v /var/run/ceph:/var/run/ceph:z \
   -v /var/run/udev/:/var/run/udev/ \
