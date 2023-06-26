@@ -284,7 +284,16 @@ def generate_ceph_authtool_cmd(cluster, name, secret, caps, dest, container_imag
     return cmd
 
 
-def create_key(module, result, cluster, user, user_key, name, secret, caps, import_key, dest, container_image=None):  # noqa: E501
+def create_key(module,
+               cluster,
+               user,
+               user_key,
+               name,
+               secret,
+               caps,
+               import_key,
+               dest,
+               container_image=None):
     '''
     Create a CephX key
     '''
@@ -510,6 +519,10 @@ def run_module():
     user_key = module.params.get('user_key')
     output_format = module.params.get('output_format')
 
+    # Can't use required_if with 'name' for some reason...
+    if state in ['present', 'absent', 'update', 'info'] and not name:
+        fatal(f'"state" is "{state}" but "name" is not defined.', module)
+
     changed = False
 
     result = dict(
@@ -597,7 +610,7 @@ def run_module():
                 module.exit_json(**result)
         if (key_exist == 0 and (secret != _secret or caps != _caps)) or key_exist != 0:  # noqa: E501
             rc, cmd, out, err = exec_commands(module, create_key(
-                module, result, cluster, user, user_key_path, name, secret, caps, import_key, file_path, container_image))  # noqa: E501
+                module, cluster, user, user_key_path, name, secret, caps, import_key, file_path, container_image))  # noqa: E501
             if rc != 0:
                 result["stdout"] = "Couldn't create or update {0}".format(name)
                 result["stderr"] = err
