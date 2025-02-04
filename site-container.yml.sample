@@ -18,7 +18,6 @@
   - nfss
   - rbdmirrors
   - clients
-  - iscsigws
   - mgrs
   - monitoring
 
@@ -34,6 +33,8 @@
 
   tasks:
     # pre-tasks for following import -
+    - import_role:
+        name: ceph-defaults
     - name: gather facts
       setup:
         gather_subset:
@@ -56,8 +57,6 @@
       when: delegate_facts_host | bool
       tags: always
 
-    - import_role:
-        name: ceph-defaults
 
     # dummy container setup is only supported on x86_64
     # when running with containerized_deployment: true this task
@@ -122,7 +121,7 @@
         name: ceph-mon
     - import_role:
         name: ceph-mgr
-      when: groups.get(mgr_group_name, []) | length == 0
+      when: groups.get(mgr_group_name, []) | length == 0 or mgr_group_name in group_names
 
 - hosts: mons
   gather_facts: false
@@ -403,46 +402,6 @@
             status: "Complete"
             end: "{{ lookup('pipe', 'date +%Y%m%d%H%M%SZ') }}"
 
-- hosts:
-    - iscsigws
-  gather_facts: false
-  any_errors_fatal: true
-  become: True
-  tasks:
-    # pre-tasks for following imports -
-    - name: set ceph iscsi gateway install 'In Progress'
-      run_once: true
-      set_stats:
-        data:
-          installer_phase_ceph_iscsi_gw:
-            status: "In Progress"
-            start: "{{ lookup('pipe', 'date +%Y%m%d%H%M%SZ') }}"
-
-    - import_role:
-        name: ceph-defaults
-      tags: ['ceph_update_config']
-    - import_role:
-        name: ceph-facts
-      tags: ['ceph_update_config']
-    - import_role:
-        name: ceph-handler
-      tags: ['ceph_update_config']
-    - import_role:
-        name: ceph-config
-      tags: ['ceph_update_config']
-    - import_role:
-        name: ceph-iscsi-gw
-
-    # post-tasks for preceding imports -
-  post_tasks:
-    - name: set ceph iscsi gw install 'Complete'
-      run_once: true
-      set_stats:
-        data:
-          installer_phase_ceph_iscsi_gw:
-            status: "Complete"
-            end: "{{ lookup('pipe', 'date +%Y%m%d%H%M%SZ') }}"
-
 - import_playbook: dashboard.yml
   when:
     - dashboard_enabled | bool
@@ -488,7 +447,76 @@
             status: "Complete"
             end: "{{ lookup('pipe', 'date +%Y%m%d%H%M%SZ') }}"
 
-- hosts: mons
+- hosts:
+  - mons
+  - osds
+  - mdss
+  - rgws
+  - rbdmirrors
+  - mgrs
+
+  gather_facts: false
+  become: True
+  any_errors_fatal: true
+  pre_tasks:
+    - name: set ceph exporter install 'In Progress'
+      run_once: true
+      set_stats:
+        data:
+          installer_phase_ceph_exporter:
+            status: "In Progress"
+            start: "{{ lookup('pipe', 'date +%Y%m%d%H%M%SZ') }}"
+
+  tasks:
+    - import_role:
+        name: ceph-defaults
+    - import_role:
+        name: ceph-facts
+        tasks_from: container_binary.yml
+    - import_role:
+        name: ceph-handler
+    - import_role:
+        name: ceph-exporter
+
+  post_tasks:
+    - name: set ceph exporter install 'Complete'
+      run_once: true
+      set_stats:
+        data:
+          installer_phase_ceph_exporter:
+            status: "Complete"
+            end: "{{ lookup('pipe', 'date +%Y%m%d%H%M%SZ') }}"
+
+- hosts:
+  - mons
+  - osds
+  - mdss
+  - rgws
+  - rbdmirrors
+  - clients
+  - mgrs
+  - monitoring
+  gather_facts: false
+  become: True
+  any_errors_fatal: true
+  tasks:
+    - name: Remove tempdir for scripts
+      ansible.builtin.file:
+        path: "{{ tmpdirpath.path }}"
+        state: absent
+      when:
+        - tmpdirpath.path is defined
+        - not _exporter_handler_called | default(false) | bool
+        - not _crash_handler_called | default(false) | bool
+        - not _mds_handler_called | default(false) | bool
+        - not _mgr_handler_called | default(false) | bool
+        - not _mon_handler_called | default(false) | bool
+        - not _osd_handler_called | default(false) | bool
+        - not _rbdmirror_handler_called | default(false) | bool
+        - not _rgw_handler_called | default(false) | bool
+
+
+- hosts: mons[0]
   gather_facts: false
   become: True
   any_errors_fatal: true
@@ -503,19 +531,15 @@
 
     - name: set_fact container_binary
       set_fact:
-        container_binary: "{{ 'podman' if (podman_binary.stat.exists and ansible_facts['distribution'] == 'Fedora') or (ansible_facts['os_family'] == 'RedHat' and ansible_facts['distribution_major_version'] == '8') else 'docker' }}"
+        container_binary: "{{ 'podman' if (podman_binary.stat.exists and ansible_facts['distribution'] == 'Fedora') or (ansible_facts['os_family'] == 'RedHat' and ansible_facts['distribution_major_version'] in ['8', '9']) else 'docker' }}"
 
     - name: get ceph status from the first monitor
       command: >
-        {{ container_binary }} exec ceph-mon-{{ hostvars[groups[mon_group_name][0]]['ansible_facts']['hostname'] }} ceph --cluster {{ cluster }} -s
+        {{ container_binary }} exec ceph-mon-{{ hostvars[inventory_hostname]['ansible_facts']['hostname'] }} ceph --cluster {{ cluster }} -s
       register: ceph_status
       changed_when: false
-      delegate_to: "{{ groups[mon_group_name][0] }}"
-      run_once: true
 
     - name: "show ceph status for cluster {{ cluster }}"
       debug:
         msg: "{{ ceph_status.stdout_lines }}"
-      delegate_to: "{{ groups[mon_group_name][0] }}"
-      run_once: true
       when: not ceph_status.failed

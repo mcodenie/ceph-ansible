@@ -1,6 +1,6 @@
 ---
 ceph_origin: repository
-ceph_repository: dev
+ceph_repository: community
 public_network: "192.168.3.0/24"
 cluster_network: "192.168.4.0/24"
 radosgw_interface: "{{ 'eth1' if ansible_facts['distribution'] == 'CentOS' else 'ens6' }}"
@@ -11,7 +11,6 @@ ceph_conf_overrides:
     mon_warn_on_pool_no_redundancy: false
     osd_pool_default_size: 1
     mon_max_pg_per_osd: 300
-openstack_config: false
 handler_health_mon_check_delay: 10
 handler_health_osd_check_delay: 10
 mds_max_mds: 2

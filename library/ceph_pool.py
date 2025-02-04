@@ -1,5 +1,3 @@
-#!/usr/bin/python3
-
 # Copyright 2020, Red Hat, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -221,6 +219,28 @@ def get_application_pool(cluster,
     return cmd
 
 
+def get_crush_rule_pool(cluster,
+                        name,
+                        user,
+                        user_key,
+                        output_format='json',
+                        container_image=None):
+    '''
+    Get crush rule type on a given pool
+    '''
+
+    args = ['get', name, 'crush_rule', '-f', output_format]
+
+    cmd = generate_cmd(sub_cmd=['osd', 'pool'],
+                       args=args,
+                       cluster=cluster,
+                       user=user,
+                       user_key=user_key,
+                       container_image=container_image)
+
+    return cmd
+
+
 def enable_application_pool(cluster,
                             name,
                             application,
@@ -319,6 +339,12 @@ def get_pool_details(module,
                                                                           user,    # noqa: E501
                                                                           user_key,    # noqa: E501
                                                                           container_image=container_image))  # noqa: E501
+    _rc, _cmd, crush_rule, _err = exec_command(module,
+                                               get_crush_rule_pool(cluster,    # noqa: E501
+                                                                   name,    # noqa: E501
+                                                                   user,    # noqa: E501
+                                                                   user_key,    # noqa: E501
+                                                                   container_image=container_image))  # noqa: E501
 
     # This is a trick because "target_size_ratio" isn't present at the same
     # level in the dict
@@ -345,6 +371,8 @@ def get_pool_details(module,
     else:
         out['application'] = application[0]
 
+    out['crush_rule'] = json.loads(crush_rule.strip())['crush_rule']
+
     return rc, cmd, out, err
 
 
@@ -355,7 +383,8 @@ def compare_pool_config(user_pool_config, running_pool_details):
 
     delta = {}
     filter_keys = ['pg_num', 'pg_placement_num', 'size',
-                   'pg_autoscale_mode', 'target_size_ratio']
+                   'pg_autoscale_mode', 'target_size_ratio',
+                   'crush_rule']
     for key in filter_keys:
         if (str(running_pool_details[key]) != user_pool_config[key]['value'] and  # noqa: E501
                 user_pool_config[key]['value']):
@@ -591,17 +620,6 @@ def run_module():
         'min_size': {'value': min_size}
     }
 
-    if module.check_mode:
-        module.exit_json(
-            changed=False,
-            stdout='',
-            stderr='',
-            rc=0,
-            start='',
-            end='',
-            delta='',
-        )
-
     startd = datetime.datetime.now()
     changed = False
 
@@ -612,6 +630,8 @@ def run_module():
     keyring_filename = cluster + '.' + user + '.keyring'
     user_key = os.path.join("/etc/ceph/", keyring_filename)
 
+    diff = dict(before="", after="")
+
     if state == "present":
         rc, cmd, out, err = exec_command(module,
                                          check_pool_exist(cluster,
@@ -619,7 +639,8 @@ def run_module():
                                                           user,
                                                           user_key,
                                                           container_image=container_image))  # noqa: E501
-        if rc == 0:
+        changed = rc != 0
+        if not changed:
             running_pool_details = get_pool_details(module,
                                                     cluster,
                                                     name,
@@ -637,10 +658,15 @@ def run_module():
                 if details['pg_autoscale_mode'] == 'on':
                     delta.pop('pg_num', None)
                     delta.pop('pgp_num', None)
+                if not module.params.get('rule_name'):
+                    delta.pop('crush_rule', None)
 
-                if len(delta) == 0:
-                    out = "Skipping pool {}.\nUpdating either 'size' on an erasure-coded pool or 'pg_num'/'pgp_num' on a pg autoscaled pool is incompatible".format(name)  # noqa: E501
-                else:
+                for key in delta.keys():
+                    diff['before'] += "{}: {}\n".format(key, details[key])
+                    diff['after'] += "{}: {}\n".format(key, delta[key]['value'])
+
+                changed = len(delta) > 0
+                if changed and not module.check_mode:
                     rc, cmd, out, err = update_pool(module,
                                                     cluster,
                                                     name,
@@ -648,11 +674,7 @@ def run_module():
                                                     user_key,
                                                     delta,
                                                     container_image=container_image)  # noqa: E501
-                    if rc == 0:
-                        changed = True
-            else:
-                out = "Pool {} already exists and there is nothing to update.".format(name)  # noqa: E501
-        else:
+        elif not module.check_mode:
             rc, cmd, out, err = exec_command(module,
                                              create_pool(cluster,
                                                          user,
@@ -677,7 +699,6 @@ def run_module():
             if user_pool_config['min_size']['value']:
                 # not implemented yet
                 pass
-            changed = True
 
     elif state == "list":
         rc, cmd, out, err = exec_command(module,
@@ -695,20 +716,17 @@ def run_module():
                                                           name, user,
                                                           user_key,
                                                           container_image=container_image))  # noqa: E501
-        if rc == 0:
+        changed = rc == 0
+        if changed and not module.check_mode:
             rc, cmd, out, err = exec_command(module,
                                              remove_pool(cluster,
                                                          name,
                                                          user,
                                                          user_key,
                                                          container_image=container_image))  # noqa: E501
-            changed = True
-        else:
-            rc = 0
-            out = "Skipped, since pool {} doesn't exist".format(name)
 
     exit_module(module=module, out=out, rc=rc, cmd=cmd, err=err, startd=startd,
-                changed=changed)
+                changed=changed, diff=diff)
 
 
 def main():

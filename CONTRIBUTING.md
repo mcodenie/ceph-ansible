@@ -14,7 +14,6 @@
   or the name of a logical grouping of code. Examples:
   - library: add a placeholder module for the validate action plugin
   - site.yml: combine validate play with fact gathering play
-  - rhcs: bump version to 3.0 for stable 3.1
 - Commits linked with an issue should trace them with :
   - Fixes: #2653
 
@@ -66,7 +65,6 @@ It means if you are pushing a patch modifying one of these files:
 - `./roles/ceph-nfs/defaults/main.yml`
 - `./roles/ceph-client/defaults/main.yml`
 - `./roles/ceph-common/defaults/main.yml`
-- `./roles/ceph-iscsi-gw/defaults/main.yml`
 - `./roles/ceph-mon/defaults/main.yml`
 - `./roles/ceph-rgw/defaults/main.yml`
 - `./roles/ceph-container-common/defaults/main.yml`

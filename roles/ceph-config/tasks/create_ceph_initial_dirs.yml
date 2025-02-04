@@ -1,11 +1,11 @@
 ---
-- name: create ceph initial directories
-  file:
+- name: Create ceph initial directories
+  ansible.builtin.file:
     path: "{{ item }}"
     state: directory
     owner: "{{ ceph_uid }}"
     group: "{{ ceph_uid }}"
-    mode: 0755
+    mode: "0755"
   loop:
     - /etc/ceph
     - /var/lib/ceph/
@@ -13,6 +13,7 @@
     - /var/lib/ceph/osd
     - /var/lib/ceph/mds
     - /var/lib/ceph/tmp
+    - /var/lib/ceph/crash
     - /var/lib/ceph/radosgw
     - /var/lib/ceph/bootstrap-rgw
     - /var/lib/ceph/bootstrap-mgr

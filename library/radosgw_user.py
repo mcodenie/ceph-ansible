@@ -195,6 +195,24 @@ def generate_radosgw_cmd(cluster, args, container_image=None):
     return cmd
 
 
+def generate_caps_cmd(cluster, args, container_image=None):
+    '''
+    Generate 'radosgw' command line to execute for caps
+    '''
+
+    cmd = pre_generate_radosgw_cmd(container_image=container_image)
+
+    base_cmd = [
+        '--cluster',
+        cluster,
+        'caps'
+    ]
+
+    cmd.extend(base_cmd + args)
+
+    return cmd
+
+
 def exec_commands(module, cmd):
     '''
     Execute command(s)
@@ -223,6 +241,7 @@ def create_user(module, container_image=None):
     zone = module.params.get('zone', None)
     system = module.params.get('system', False)
     admin = module.params.get('admin', False)
+    caps = module.params.get('caps')
 
     args = ['create', '--uid=' + name, '--display_name=' + display_name]
 
@@ -250,9 +269,77 @@ def create_user(module, container_image=None):
     if admin:
         args.append('--admin')
 
+    if caps:
+        caps_args = [f"{cap['type']}={cap['perm']}" for cap in caps]
+        args.extend(['--caps=' + ';'.join(caps_args)])
+
     cmd = generate_radosgw_cmd(cluster=cluster,
                                args=args,
                                container_image=container_image)
+
+    return cmd
+
+
+def caps_add(module, caps, container_image=None):
+    '''
+    Create a new user
+    '''
+
+    cluster = module.params.get('cluster')
+    name = module.params.get('name')
+    realm = module.params.get('realm', None)
+    zonegroup = module.params.get('zonegroup', None)
+    zone = module.params.get('zone', None)
+
+    args = ['add', '--uid=' + name]
+
+    if realm:
+        args.extend(['--rgw-realm=' + realm])
+
+    if zonegroup:
+        args.extend(['--rgw-zonegroup=' + zonegroup])
+
+    if zone:
+        args.extend(['--rgw-zone=' + zone])
+
+    caps_args = [f"{cap['type']}={cap['perm']}" for cap in caps]
+    args.extend(['--caps=' + ';'.join(caps_args)])
+
+    cmd = generate_caps_cmd(cluster=cluster,
+                            args=args,
+                            container_image=container_image)
+
+    return cmd
+
+
+def caps_rm(module, caps, container_image=None):
+    '''
+    Create a new user
+    '''
+
+    cluster = module.params.get('cluster')
+    name = module.params.get('name')
+    realm = module.params.get('realm', None)
+    zonegroup = module.params.get('zonegroup', None)
+    zone = module.params.get('zone', None)
+
+    args = ['rm', '--uid=' + name]
+
+    if realm:
+        args.extend(['--rgw-realm=' + realm])
+
+    if zonegroup:
+        args.extend(['--rgw-zonegroup=' + zonegroup])
+
+    if zone:
+        args.extend(['--rgw-zone=' + zone])
+
+    caps_args = [f"{cap['type']}={cap['perm']}" for cap in caps]
+    args.extend(['--caps=' + ';'.join(caps_args)])
+
+    cmd = generate_caps_cmd(cluster=cluster,
+                            args=args,
+                            container_image=container_image)
 
     return cmd
 
@@ -398,7 +485,8 @@ def run_module():
         zonegroup=dict(type='str', required=False),
         zone=dict(type='str', required=False),
         system=dict(type='bool', required=False, default=False),
-        admin=dict(type='bool', required=False, default=False)
+        admin=dict(type='bool', required=False, default=False),
+        caps=dict(type='list', required=False),
     )
 
     module = AnsibleModule(
@@ -415,19 +503,9 @@ def run_module():
     email = module.params.get('email')
     access_key = module.params.get('access_key')
     secret_key = module.params.get('secret_key')
-    system = str(module.params.get('system')).lower()
-    admin = str(module.params.get('admin')).lower()
-
-    if module.check_mode:
-        module.exit_json(
-            changed=False,
-            stdout='',
-            stderr='',
-            rc=0,
-            start='',
-            end='',
-            delta='',
-        )
+    system = module.params.get('system')
+    admin = module.params.get('admin')
+    caps = module.params.get('caps')
 
     startd = datetime.datetime.now()
     changed = False
@@ -435,48 +513,62 @@ def run_module():
     # will return either the image name or None
     container_image = is_containerized()
 
+    rc, cmd, out, err = exec_commands(module, get_user(module, container_image=container_image))  # noqa: E501
     if state == "present":
-        rc, cmd, out, err = exec_commands(module, get_user(module, container_image=container_image))  # noqa: E501
         if rc == 0:
             user = json.loads(out)
             current = {
                 'display_name': user['display_name'],
-                'system': user.get('system', 'false'),
-                'admin': user.get('admin', 'false')
+                'system': user.get('system', False),
+                'admin': user.get('admin', False),
             }
             asked = {
                 'display_name': display_name,
                 'system': system,
-                'admin': admin
+                'admin': admin,
             }
             if email:
                 current['email'] = user['email']
                 asked['email'] = email
-            if access_key:
-                current['access_key'] = user['keys'][0]['access_key']
-                asked['access_key'] = access_key
-            if secret_key:
-                current['secret_key'] = user['keys'][0]['secret_key']
-                asked['secret_key'] = secret_key
+            if caps:
+                current['caps'] = user['caps']
+                asked['caps'] = caps
 
-            if current != asked:
-                rc, cmd, out, err = exec_commands(module, modify_user(module, container_image=container_image))  # noqa: E501
-                changed = True
+            if access_key and secret_key:
+                asked['access_key'] = access_key
+                asked['secret_key'] = secret_key
+                for key in user['keys']:
+                    if key['access_key'] == access_key and key['secret_key'] == secret_key:  # noqa: E501
+                        del asked['access_key']
+                        del asked['secret_key']
+                        break
+
+            changed = current != asked
+            if changed and not module.check_mode:
+                rc, cmd, out, err = exec_commands(module, modify_user(module, container_image=container_image))
+
+                if caps:
+                    missing_caps = [cap for cap in asked['caps'] if cap not in current['caps']]
+                    extra_caps = [cap for cap in current['caps'] if cap not in asked['caps']]
+                    if extra_caps:
+                        rc, cmd, out, err = exec_commands(module, caps_rm(module, extra_caps, container_image=container_image))
+                    if missing_caps:
+                        rc, cmd, out, err = exec_commands(module, caps_add(module, missing_caps, container_image=container_image))
         else:
-            rc, cmd, out, err = exec_commands(module, create_user(module, container_image=container_image))  # noqa: E501
             changed = True
+            if not module.check_mode:
+                rc, cmd, out, err = exec_commands(module, create_user(module, container_image=container_image))  # noqa: E501
+            else:
+                rc = 0
 
     elif state == "absent":
-        rc, cmd, out, err = exec_commands(module, get_user(module, container_image=container_image))  # noqa: E501
         if rc == 0:
-            rc, cmd, out, err = exec_commands(module, remove_user(module, container_image=container_image))  # noqa: E501
+            if not module.check_mode:
+                rc, cmd, out, err = exec_commands(module, remove_user(module, container_image=container_image))  # noqa: E501
             changed = True
         else:
             rc = 0
             out = "User {} doesn't exist".format(name)
-
-    elif state == "info":
-        rc, cmd, out, err = exec_commands(module, get_user(module, container_image=container_image))  # noqa: E501
 
     exit_module(module=module, out=out, rc=rc, cmd=cmd, err=err, startd=startd, changed=changed)  # noqa: E501
 

@@ -3,6 +3,7 @@ import os
 import pytest
 import ca_test_common
 import ceph_crush_rule
+import ceph_crush_rule_info
 
 fake_cluster = 'ceph'
 fake_container_binary = 'podman'
@@ -17,18 +18,6 @@ fake_keyring = '/etc/ceph/{}.{}.keyring'.format(fake_cluster, fake_user)
 
 
 class TestCephCrushRuleModule(object):
-
-    @patch('ansible.module_utils.basic.AnsibleModule.fail_json')
-    def test_without_parameters(self, m_fail_json):
-        ca_test_common.set_module_args({})
-        m_fail_json.side_effect = ca_test_common.fail_json
-
-        with pytest.raises(ca_test_common.AnsibleFailJson) as result:
-            ceph_crush_rule.main()
-
-        result = result.value.args[0]
-        assert result['msg'] == 'missing required arguments: name'
-
     @patch('ansible.module_utils.basic.AnsibleModule.fail_json')
     def test_with_name_only(self, m_fail_json):
         ca_test_common.set_module_args({
@@ -351,7 +340,6 @@ class TestCephCrushRuleModule(object):
     def test_get_non_existing_rule(self, m_run_command, m_exit_json):
         ca_test_common.set_module_args({
             'name': fake_name,
-            'state': 'info'
         })
         m_exit_json.side_effect = ca_test_common.exit_json
         rc = 2
@@ -360,7 +348,7 @@ class TestCephCrushRuleModule(object):
         m_run_command.return_value = rc, stdout, stderr
 
         with pytest.raises(ca_test_common.AnsibleExitJson) as result:
-            ceph_crush_rule.main()
+            ceph_crush_rule_info.main()
 
         result = result.value.args[0]
         assert not result['changed']
@@ -376,7 +364,6 @@ class TestCephCrushRuleModule(object):
     def test_get_existing_rule(self, m_run_command, m_exit_json):
         ca_test_common.set_module_args({
             'name': fake_name,
-            'state': 'info'
         })
         m_exit_json.side_effect = ca_test_common.exit_json
         rc = 0
@@ -385,13 +372,37 @@ class TestCephCrushRuleModule(object):
         m_run_command.return_value = rc, stdout, stderr
 
         with pytest.raises(ca_test_common.AnsibleExitJson) as result:
-            ceph_crush_rule.main()
+            ceph_crush_rule_info.main()
 
         result = result.value.args[0]
         assert not result['changed']
         assert result['cmd'] == ['ceph', '-n', fake_user, '-k', fake_keyring,
                                  '--cluster', fake_cluster, 'osd', 'crush', 'rule',
                                  'dump', fake_name, '--format=json']
+        assert result['rc'] == rc
+        assert result['stderr'] == stderr
+        assert result['stdout'] == stdout
+
+    @patch('ansible.module_utils.basic.AnsibleModule.exit_json')
+    @patch('ansible.module_utils.basic.AnsibleModule.run_command')
+    def test_get_all_rules(self, m_run_command, m_exit_json):
+        ca_test_common.set_module_args({
+            'name': str(),
+        })
+        m_exit_json.side_effect = ca_test_common.exit_json
+        rc = 0
+        stderr = ''
+        stdout = '{{"rule_name":"{}","steps":[{{"item_name":"{}"}},{{"type":"{}"}}]}}'.format(fake_name, fake_bucket_root, fake_bucket_type)
+        m_run_command.return_value = rc, stdout, stderr
+
+        with pytest.raises(ca_test_common.AnsibleExitJson) as result:
+            ceph_crush_rule_info.main()
+
+        result = result.value.args[0]
+        assert not result['changed']
+        assert result['cmd'] == ['ceph', '-n', fake_user, '-k', fake_keyring,
+                                 '--cluster', fake_cluster, 'osd', 'crush', 'rule',
+                                 'dump', '', '--format=json']
         assert result['rc'] == rc
         assert result['stderr'] == stderr
         assert result['stdout'] == stdout
@@ -403,7 +414,6 @@ class TestCephCrushRuleModule(object):
     def test_with_container(self, m_run_command, m_exit_json):
         ca_test_common.set_module_args({
             'name': fake_name,
-            'state': 'info'
         })
         m_exit_json.side_effect = ca_test_common.exit_json
         rc = 0
@@ -412,7 +422,7 @@ class TestCephCrushRuleModule(object):
         m_run_command.return_value = rc, stdout, stderr
 
         with pytest.raises(ca_test_common.AnsibleExitJson) as result:
-            ceph_crush_rule.main()
+            ceph_crush_rule_info.main()
 
         result = result.value.args[0]
         assert not result['changed']

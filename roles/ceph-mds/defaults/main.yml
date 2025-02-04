@@ -18,15 +18,18 @@ copy_admin_key: false
 # Resource limitation
 # For the whole list of limits you can apply see: docs.docker.com/engine/admin/resource_constraints
 # Default values are based from: https://access.redhat.com/documentation/en-us/red_hat_ceph_storage/2/html/red_hat_ceph_storage_hardware_guide/minimum_recommendations
-# These options can be passed using the 'ceph_mds_docker_extra_env' variable.
 ceph_mds_docker_memory_limit: "{{ ansible_facts['memtotal_mb'] }}m"
 ceph_mds_docker_cpu_limit: 4
 
-# we currently for MDS_NAME to hostname because of a bug in ceph-docker
-# fix here: https://github.com/ceph/ceph-docker/pull/770
-# this will go away soon.
-ceph_mds_docker_extra_env: -e MDS_NAME={{ ansible_facts['hostname'] }}
 ceph_config_keys: [] # DON'T TOUCH ME
+# If you want to add parameters, you should retain the existing ones and include the new ones.
+ceph_mds_container_params:
+  volumes:
+    - /var/lib/ceph/bootstrap-mds:/var/lib/ceph/bootstrap-mds:z
+    - /var/lib/ceph/mds/{{ cluster }}-{{ ansible_facts['hostname'] }}:/var/lib/ceph/mds/{{ cluster }}-{{ ansible_facts['hostname'] }}:z
+  args:
+    - -f
+    - -i={{ ansible_facts['hostname'] }}
 
 
 ###########
@@ -35,6 +38,6 @@ ceph_config_keys: [] # DON'T TOUCH ME
 # ceph_mds_systemd_overrides will override the systemd settings
 # for the ceph-mds services.
 # For example,to set "PrivateDevices=false" you can specify:
-#ceph_mds_systemd_overrides:
-#  Service:
-#    PrivateDevices: False
+# ceph_mds_systemd_overrides:
+#   Service:
+#     PrivateDevices: false
