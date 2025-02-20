@@ -942,6 +942,7 @@
     - name: Update the placement of radosgw hosts
       ceph_orch_apply:
         fsid: "{{ fsid }}"
+        cluster: "{{ cluster }}"
         spec: |
           service_type: rgw
           service_id: {{ ansible_facts['hostname'] }}
@@ -950,7 +951,7 @@
             hosts:
               - {{ ansible_facts['nodename'] }}
           {% if rgw_subnet is defined %}
-          networks: "{{ radosgw_address_block }}"
+          networks: {{ radosgw_address_block.split(',') | list if ',' in radosgw_address_block else radosgw_address_block | string }}
           {% endif %}
           spec:
             rgw_frontend_port: {{ radosgw_frontend_port }}
@@ -1480,15 +1481,15 @@
         - name: Update the placement of alertmanager hosts
           ceph_orch_apply:
             fsid: "{{ fsid }}"
+            cluster: "{{ cluster }}"
             spec: |
               service_type: alertmanager
               service_id: "{{ ansible_facts['hostname'] }}"
               placement:
                 label: "{{ monitoring_group_name }}"
                 count: "{{ groups.get(monitoring_group_name, []) | length }}"
-              {% if grafana_server_addr is defined %}
-              networks:
-              - {{ grafana_server_addr }}
+              {% if grafana_network is defined %}
+              networks: {{ grafana_network.split(',') | list if ',' in grafana_network else [grafana_network] }}
               {% endif %}
           delegate_to: "{{ groups[mon_group_name][0] }}"
           environment:
@@ -1503,12 +1504,16 @@
         - name: Update the placement of prometheus hosts
           ceph_orch_apply:
             fsid: "{{ fsid }}"
+            cluster: "{{ cluster }}"
             spec: |
               service_name: prometheus
               service_id: "{{ ansible_facts['hostname'] }}"
               placement:
                 label: {{ monitoring_group_name }}
                 count: {{ groups.get(monitoring_group_name, []) | length }}
+              {% if grafana_network is defined %}
+              networks: {{ grafana_network.split(',') | list if ',' in grafana_network else [grafana_network] }}
+              {% endif %}
               {% if prometheus_port is defined and prometheus_port != 9095 %}
               spec:
                 port: {{ prometheus_port }}
